@@ -1,11 +1,11 @@
 ---
-title: "PSTAT126 Project Step 2 11/12"
+title: "PSTAT126 Group Project Step 3"
 author: "Hanya Ansari, Carina Yuen, Daren Aguilera"
 output:
   pdf_document: default
   word_document: default
   html_document: default
-date: "2023-11-10"
+date: "2023-12-3"
 ---
 
 ```{r setup, include=FALSE, echo=FALSE}
@@ -15,8 +15,7 @@ knitr::opts_chunk$set(echo = FALSE,
                       fig.width = 4,
                       fig.height = 3,
                       fig.align = 'center')
-#data <- read.csv("C:/Users/Carina W Yuen/Downloads/archive/winequality-red.csv")
-#data <- read.csv("C:/Users/Daren/Downloads/winequality-red.csv", sep=";")
+data <- read.csv("winequality-red.csv",sep=";")  # read_delim("winequality-red.csv", delim=";")
 ```
 
 ```{r}
@@ -48,7 +47,9 @@ x_d <- data$density
 x_p <- data$pH
 x_s <- data$sulphates
 x_a <- data$alcohol
+```
 
+```{r}
 mod1 <- lm(quality ~ ., data)
 ```
 
