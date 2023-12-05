@@ -15,13 +15,21 @@ knitr::opts_chunk$set(echo = FALSE,
                       fig.width = 4,
                       fig.height = 3,
                       fig.align = 'center')
+
 data <- read.csv("winequality-red.csv",sep=";")  # read_delim("winequality-red.csv", delim=";")
+
 ```
 
 ```{r}
 library(tidymodels)
 library(tidyverse)
 library(modelr)
+library(ggplot2)
+library(GGally)
+```
+#####Test Data Aside 
+```{r}
+
 ```
 
 ### Introduction:
@@ -49,19 +57,116 @@ x_s <- data$sulphates
 x_a <- data$alcohol
 ```
 
+### ggpairs plot
 ```{r}
-mod1 <- lm(quality ~ ., data)
+ggpairs(data, title = 'Ggpairs Plot For Variables of Interest', columns=c('free.sulfur.dioxide', 'total.sulfur.dioxide', 'density', 'alcohol','quality', 'residual.sugar'), columnLabels = c('free.sulfur.dioxide', 'total.sulfur.dioxide', 'density', 'alcohol','quality', 'residual.sugar'))
 ```
 
-### Hypothesis
+####Interpretation of ggpairs Plots
+The upper triangle of the code output represents the 15 correlation coefficients (6 choose 2 number of pairs of wine parameters). The diagonal displays the graph of the distribution. 
 
-**Null Hypothesis: all measured explanatory variables have no linear relationship to the wine quality score.**
+We noticed that free sulfur dioxide and total sulfur dioxide have a relatively high correlation value of 0.668. This makes sense because the amount of Total Sulfur Dioxide encompasses the Free Sulfur Dioxide, so as we expect that as the Free Sulfur Dioxide increases, so does the total. Another interesting relationship we noticed was that alcohol content and density had a relatively large (in magnitude) correlation value of -0.496. This can be seen visually in the scatter plot of density and alcohol. 
 
-$$H_0: \beta_i=0 \: \forall \: i \in  f, v, c, r, ch, fs, ts, d, p, s, a$$
+There is not any obvious simple transformations that would improve the fit drastically. We did notice that the density and residual sugar scatter plot had a pattern that roughly looked like an exponential, so we will include the natural log transformation and evaluate if it made a difference.
 
-**Alternative Hypothesis: at least one measured explanatory variable has a linear relationship with the wine quality score.**
 
-$$H_a:  \beta_i \neq 0 \: for \:at \:least \:one \: i \in f, v, c, r, ch, fs, ts, d, p, s, a $$
+### Feature Engineering 
+```{r}
+mod1 <- lm(quality ~ ., data) #full model 
+
+library(leaps)
+out <- regsubsets(bodyfat ~ ., data = fat, # just like lm()
+method = 'seqrep', # search strategy
+nbest = 1, # how many models of each size?
+nvmax = 5) # maximum number of predictors
+```
+
+
+```{r}
+# Choose best models from Project step 2
+# STEPWISE REGRESSION WITH BACKWARD ELIMINATION
+# poly model order 2
+fit2_quality <- lm(quality_data~x_f + poly(x_v, 2, raw = T) + x_c+ x_r + poly(x_ch, 2, raw=T) + poly(x_fs, 2, raw=T)+ poly(x_ts, 2, raw=T) + x_d + poly(x_p,2,raw=T) + poly(x_s,2,raw=T) + poly(x_a, 2, raw=T))
+
+# poly model order 3
+fit3_quality <- lm(quality_data~x_f+poly(x_v, 3, raw = T) + x_c + x_r + + poly(x_ch, 3, raw=T) + poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+ poly(x_s,3,raw=T)+poly(x_a, 3, raw=T))
+
+# comparison of original poly model order 2 and original poly model 3
+anova(fit2_quality, fit3_quality)
+
+
+# modified model with interaction term between free sulfur dioxide and total sulfur dioxide +x_fs:x_ts, 'int' for interactive term included
+fit2_qual_mod<- lm(quality_data~x_f + poly(x_v, 2, raw = T) + x_c+ x_r + poly(x_ch, 2, raw=T) + poly(x_fs, 2, raw=T)+ poly(x_ts, 2, raw=T) + x_d + poly(x_p,2,raw=T) + poly(x_s,2,raw=T) + poly(x_a, 2, raw=T)+ x_fs:x_ts + x_d:x_a)
+
+# modified model with interaction term but with poly model order 3
+fit3_qual_int <- lm(quality_data~x_f+poly(x_v, 3, raw = T) + x_c + x_r +  poly(x_ch, 3, raw=T) + poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+ poly(x_s,3,raw=T)+poly(x_a, 3, raw=T)+x_fs:x_ts +x_d:x_a)
+
+anova(fit2_qual_mod, fit3_qual_int)
+
+# log transformation because scatter plot looks like exponential ???
+print(fit3_qual_int <- lm(log(quality_data)~x_f+poly(x_v, 3, raw = T) + x_c + x_r +  poly(x_ch, 3, raw=T) + poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+ poly(x_s,3,raw=T)+poly(x_a, 3, raw=T)+x_fs:x_ts +x_d:x_a))
+
+# after choosing model order 3, do hypothesis testing
+```
+
+**Computational and Statistical Model Choices**
+
+**Model Selection**
+
+
+```{r}
+fit3_qual_int <- lm(quality_data~x_f+poly(x_v, 3, raw = T) + x_c + x_r +  poly(x_ch, 3, raw=T) + poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+ poly(x_s,3,raw=T)+poly(x_a, 3, raw=T)+x_fs:x_ts +x_d:x_a)
+
+summary(fit3_qual_int)$adj.r.squared
+
+#head(predict(fit3_qual_int, newdata = x_bar, interval='confidence',level=0.95))
+
+#8.2.2 Stepwise regression with backward elimination
+
+#data_partition <- data$quality %>% resample_partition(p=c(train=0.7, test=0.3))
+
+#fit_train <- lm(data ~., data=data_partition$train)
+#mse(model=fit_train, data=data_partition$test)
+
+
+```
+
+**Comparison of models**
+
+**Interpretation of Coefficients (Indicator Variables)**
+
+
+**R^2 and Adjusted R^2**
+
+**Analysis of the residuals and influence plots**
+*Refit model with and without certain data that have both high leverage and large residuals*
+```{r}
+# full model
+plot(lm(quality_data~x_f+poly(x_v, 3, raw = T) + x_c + x_r +  poly(x_ch, 3, raw=T) + poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+ poly(x_s,3,raw=T)+poly(x_a, 3, raw=T)+x_fs:x_ts +x_d:x_a)
+)
+```
+
+**Confidence Intervals and Prediction Intervals**
+
+**Summary**
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```{r, fig.width = 8, fig.height = 3, fig.cap= 'Panel of residual plots'}
 # panel of residual plots for chlorides, pH, and sulphates
@@ -249,15 +354,4 @@ The fitted vs residual plots for fit2 vs fit3 (poly order 2 vs 3) are quite simi
 Our confidence interval for the variables of interest and fit_alc indicated that the 95% confidence interval was between 9.55 and 9.69 when only considering the variables of interest and their impact. In relation to the variables of interest and fit3quality, our output suggested that the confidence interval was between 4.97 and 5.14 with 95% confidence. Our output suggests that the prediction interval, as a result, ranges from about 3.8 to 6.29 with 95% confidence when only taking into account variables of interest.
 
 Analysis for nested model (without citric acid and density terms): We see from the anova table that our F-value is 2.2e-16, therefore we reject our null hypothesis. (i.e. there is no significant difference in the features of citric acid and density.)
-
-```{r}
-# for reproducibility
-set.seed(81921)
-# partition into 70% training and 30% test sets
-fat_partition <- fat %>% resample_partition(p = c(train = 0.7, test = 0.3))
-# fit to training data
-fit_train <- lm(bodyfat ~ ., data = fat_partition$train)
-# estimate error on test set
-mse(model = fit_train, data = fat_partition$test)
-```
 
