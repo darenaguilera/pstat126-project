@@ -1,0 +1,250 @@
+---
+title: "PSTAT126 Project Step 2 11/12"
+author: "Hanya Ansari, Carina Yuen, Daren Aguilera"
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+date: "2023-11-10"
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = F,
+                      warning  = F,
+                      fig.width = 4,
+                      fig.height = 3,
+                      fig.align = 'center')
+#data <- read.csv("C:/Users/Carina W Yuen/Downloads/archive/winequality-red.csv")
+data <- read.csv("C:/Users/Daren/Downloads/winequality-red.csv", sep=";")
+```
+
+```{r}
+library(tidymodels)
+library(tidyverse)
+library(modelr)
+```
+
+### Introduction:
+
+**Wine Quality Based on Physicochemical Tests from UCI Machine Learning Repository**
+
+**No Missing Attribute Values**: 0
+
+**Number of Instances:** red wine: 1599
+
+**Number of Variables:** 12 total, 11 continuous, 1 discrete (fixed_acidity, volatile_acidity, citric_acid, residual_sugar, chlorides, free_sulfur_dioxide, total_sulfur_dioxide, density, pH, sulphates, alcohol and 1 integer output variable: quality score between 0 and 10)
+
+```{r}
+quality_data <- data$quality
+x_f <- data$fixed.acidity
+x_v <- data$volatile.acidity
+x_c <- data$citric.acid
+x_r <- data$residual.sugar
+x_ch <- data$chlorides
+x_fs <- data$free.sulfur.dioxide
+x_ts <- data$total.sulfur.dioxide
+x_d <- data$density
+x_p <- data$pH
+x_s <- data$sulphates
+x_a <- data$alcohol
+
+mod1 <- lm(quality ~ ., data)
+```
+
+### Hypothesis
+
+**Null Hypothesis: all measured explanatory variables have no linear relationship to the wine quality score.**
+
+$$H_0: \beta_i=0 \: \forall \: i \in  f, v, c, r, ch, fs, ts, d, p, s, a$$
+
+**Alternative Hypothesis: at least one measured explanatory variable has a linear relationship with the wine quality score.**
+
+$$H_a:  \beta_i \neq 0 \: for \:at \:least \:one \: i \in f, v, c, r, ch, fs, ts, d, p, s, a $$
+
+```{r, fig.width = 8, fig.height = 3, fig.cap= 'Panel of residual plots'}
+# panel of residual plots for chlorides, pH, and sulphates
+augment(mod1, data) %>%
+  pivot_longer(cols = c(fixed.acidity, citric.acid, density)) %>%
+  ggplot(aes(y = .resid, x = value)) +
+  facet_wrap(~ name, scales = 'free_x') +
+  geom_point() +
+  geom_hline(aes(yintercept = 0)) + 
+  geom_smooth(method = 'loess', formula = 'y ~ x', se = F, span = 1)
+```
+
+#### Partial F-test
+
+$$\beta_\text{citric acid} = \beta_{density} = 0$$
+
+```{r}
+#fitted model without citric acid and density
+mod2 <- lm(quality ~ volatile.acidity + fixed.acidity + residual.sugar + chlorides + free.sulfur.dioxide + pH + sulphates, data)
+#summary(mod2)
+anova(mod2,mod1)
+```
+
+We see from the anova table that our F-value is 2.2e-16, therefore we reject our null hypothesis. (i.e. there is no significant difference in the features of citric acid and density.)
+
+### Assumptions for Linear Regression
+
+Alcohol vs Quality Score and Total Sulfur Dioxide Analysis: The residuals plot for alcohol vs quality score shows that it does not violate the assumption of linearity because the graph shows a pretty clear linear relationship.
+
+Alcohol vs Residual Sugars Analysis: Residual Sugars The data shows a reverse fan shape,
+
+Free Sulfur vs Quality Score Analysis: The residuals plot for free sulfur vs quality score analysis shows that there is not a clear linear relationship, it almost looks like a parabolic shape that's been rotated.
+
+Residual Sugars Analysis: The data shows a reverse fan shape,
+
+```{r, fig.cap= 'Checking Assumptions for linear regression'}
+plot(x_a, quality_data, main = 'Alcohol vs Quality Score', xlab = 'Alcohol', ylab = 'Quality Score (out of 10)', pch=1, frame = FALSE)
+abline(lm(quality_data ~ x_a, data=data))
+
+plot(x_fs, quality_data, main = 'Free Sulfur Dioxide vs Quality Score', xlab = 'Free Sulfur Dioxide', ylab = 'Quality Score (out of 10)', pch=1, frame = FALSE)
+abline(lm(quality_data ~ x_fs, data=data))
+
+plot(x_r, x_d, main = 'Residual Sugars vs Density', xlab = 'Residual Sugars', ylab = 'Density', pch=1, frame = FALSE)
+abline(lm(x_d~ x_r, data=data))
+
+plot(x_r, quality_data, main = 'Residual Sugars vs Quality Score', xlab = 'Residual Sugars', ylab = 'Quality Score (out of 10)', pch=1, frame = FALSE)
+abline(lm(quality_data ~ x_r, data=data))
+
+```
+
+### ANOVA Testing:
+
+We created four models: fit_alc, fit_quality, fit2_quality, and fit3_quality that have polynomials of order 1, 2, and 3, respectively. We applied the poly() function to wine quality variables with lower p-values, as we thought these would be the most influential on the response variable of quality score. The variables we chose to apply poly() to were the following: x_v, x_ch, x_fs x_ts, x_p x_s, x_a (measuring volatile acidity, chloride content, free sulfur dioxide, total sulfur dioxide, phosphates, sulphates, and alcohol content).
+
+Overall Analysis of fitalc (Alcohol Content and Density): The sum of squares value for the alcohol content variable x_a is 236.3, which measures the variation between the group mean and the overall mean. The F value is 521.6 which is positive because a larger F value means that it is more likely alcohol content is causing the variation in density. Given that the p value (\<2e-16) is low, it seems like alcohol content has an impact on the quality score.
+
+Two-Way ANOVA for Alcohol Content and Density (continuous variables case): x_a measures alcohol percentage. The percentage of alcohol content in the wine directly affects the wine's density, so it makes sense that are consistent with one another. The F value was 521.6, which indicates that it is more likely that alcohol content is causing variation in density. In addition, the p value is also very low \<2e-16, further supporting this.
+
+ANOVA for Alcohol Content and Quality Data (discrete variable with integer score 1-10): The F value was 468.3, which indicates that it is likely alcohol content causes changes in Final Quality Score of each wine. The p value is also very low \<2e-16.
+
+Residual Plot Analysis: The fitted vs residual plots for fit2 vs fit3 (poly order 2 vs 3) are quite similar, indicating that the change in the polynomial order did not change the model for data quality score much.
+
+R\^2 values: "R squared value: fit alc" [1] 0.6680158 [1] "R squared value: fit 1" [1] 0.3561195 [1] "R squared value: fit 2" [1] 0.3761969 [1] "R squared value: fit 3" [1] 0.3912501
+
+```{r, fig.cap='Full and nested models' }
+# Full and Nested Models
+# base full model
+print("Full and Nested Models")
+fit_alc <- lm(x_a~x_f+x_v+x_c+x_r+x_ch+x_fs+x_ts+x_d+x_p+x_s)    # continuous case for (density) and x_a (alcohol content)
+fit_quality <- lm(quality_data~x_f+x_v+x_c+x_r+x_ch+x_fs+x_ts+x_d+x_p+x_s+x_a) # discrete case for quality score 1-10 and wine variables
+
+
+# poly model order 2
+fit2_quality <- lm(quality_data~x_f + poly(x_v, 2, raw = T) + x_c+ x_r + poly(x_ch, 2, raw=T) + poly(x_fs, 2, raw=T)+ poly(x_ts, 2, raw=T) + x_d + poly(x_p,2,raw=T) + poly(x_s,2,raw=T) + poly(x_a, 2, raw=T))
+
+
+# poly model order 3
+fit3_quality <- lm(quality_data~x_f+poly(x_v, 3, raw = T) + x_c + x_r + + poly(x_ch, 3, raw=T) + poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+ poly(x_s,3,raw=T)+poly(x_a, 3, raw=T))
+
+
+# Normal QQ plots and fitted vs residual plots
+# Fit 3
+plot(fitted(fit_alc), resid(fit_alc), col = "grey", pch = 20,
+     xlab = "Fitted", ylab = "Residuals", main = "Fitted Alcohol Model versus Residuals")
+abline(h = 0, col = "blue", lwd = 2)
+qqnorm(resid(fit_alc), main = "Alcohol Normal QQ plot")
+qqline(resid(fit_alc), col = "blue", lwd = 2)
+
+plot(fitted(fit3_quality), resid(fit3_quality), col = "grey", pch = 20,
+     xlab = "Fitted", ylab = "Residuals", main = "Fitted (Model 3) versus Residuals")
+abline(h = 0, col = "blue", lwd = 2)
+
+qqnorm(resid(fit3_quality), main = "Fit 3 Normal QQ plot")
+qqline(resid(fit3_quality), col = "blue", lwd = 2)
+
+# Fit 2
+plot(fitted(fit2_quality), resid(fit2_quality), col = "grey", pch = 20,
+     xlab = "Fitted", ylab = "Residuals", main = "Fitted (Model 2) versus Residuals")
+abline(h = 0, col = "blue", lwd = 2)
+
+qqnorm(resid(fit2_quality), main = "Fit 2 Normal QQ plot")
+qqline(resid(fit2_quality), col = "blue", lwd = 2)
+
+print("R squared value: fit alc, fit 1, fit 2, fit 3")
+summary(fit_alc)$adj.r.squared
+summary(fit_quality)$adj.r.squared
+summary(fit2_quality)$adj.r.squared
+summary(fit3_quality)$adj.r.squared
+
+# ANOVA for two continuous variables
+print("Density and Alcohol Content ANOVA")
+density_anova <- aov(alcohol ~ density, data=data)
+summary(density_anova)
+
+# ANOVA for discrete variable
+print("Quality Score ANOVA")
+alc_anova <- aov(quality_data ~ x_a, data = data )
+summary(alc_anova)
+
+
+```
+
+<!-- #### Transformation -->
+
+<!-- We tried plotting many of the variables against each other and noticed -->
+
+<!-- that the Residual Sugar vs Chlorides plot benefited from a log base 10 -->
+
+<!-- transformation. The original Residual Sugar vs Chlorides plot has a -->
+
+<!-- roughly -log(x) shape, so using an exp() transformation made it look -->
+
+<!-- much more linear. -->
+
+<!-- ```{r, fig.cap= 'Transformation'} -->
+
+<!-- # log transformation  -->
+
+<!-- plot(x_ch~x_r, data=data, col = 'blue', main = 'Residual Sugar vs Chlorides') -->
+
+<!-- plot(x_ch~exp(x_r), data=data, col="blue", main="Residual Sugar vs Log Transformation of Density Variable") -->
+
+<!-- ``` -->
+
+### Confidence Interval and Prediction Interval
+
+#### Variables of Interest
+
+fit_alc: The mean alcohol content value (volume %) is about 10.42. Our confidence interval output suggests the 95% confidence interval is between 9.55 and 9.69 (one of randomly chosen intervals) when only taking into account variables of interest. Our prediction interval output suggests that the 95% prediction interval for a particular value ranges from about 8.41 to 10.82 when also only taking into account variables of interest. Here we see that the prediction interval is larger than the confidence interval as we expect. It seems that given the other wine parameters, we can predict pretty well the mean alcohol value.
+
+Variables of Interest and fit3quality: The mean quality score is about 5.06/10. Our output suggests the confidence interval is between 4.97 and 5.14 with 95% confidence when only taking into account variables of interest. Our output suggests that the prediction interval for a particular value ranges from about 3.8 to 6.29 with 95% confidence when also only taking into account variables of interest. Here we see that the prediction interval is larger than the confidence interval as we expect.
+
+```{r, include=FALSE, echo=FALSE}
+# Confidence Interval
+# 95% CI for the coefficient for expenditure
+
+
+x_bar <- list(mean(x_a),mean(x_fs),mean(x_d),mean(quality_data))
+
+print(x_bar)
+
+print("Confidence Interval fit_alc")
+head(predict(fit_alc, newdata = x_bar, interval = 'confidence', level= 0.95))
+
+print("Confidence Interval fit3")
+head(predict(fit3_quality, newdata = x_bar, interval='confidence',level=0.95))
+# average of of interest predictors: alcohol, free sulfur dioxide, density, quality score
+
+print("Prediction Interval fit_alc")
+# Prediction Interval  at a particular value, when alcohol content is about double the mean 20.84, we can say with 95% confidence the quality score will fall in our CI
+head(predict(fit_alc, x_a=20.84,interval = 'prediction', level= 0.95))
+
+print("Prediction Interval fit_3")
+head(predict(fit3_quality, x_a=20.84,interval = 'prediction', level= 0.95))
+```
+
+### Conclusion
+
+From our ANOVA testing of alcohol content and final quality score, the F value was 468.3, which indicates that it is likely alcohol content causes changes in Final Quality Score of each wine.
+
+Our two-way ANOVA testing of alcohol content and density indicated consistency amongst both continuous variables. The F value was 521.6 and the low p value was (\<2e-16) indicating that alcohol content causes variation in density.
+
+The fitted vs residual plots for fit2 vs fit3 (poly order 2 vs 3) are quite similar, with fit3 being the better model. The R\^2 values are 0.6680158 for fit alc, 0.3561195 for fit1, 0.3761969 for fit 2, and 0.3912501 for fit 3.
+
+Our confidence interval for the variables of interest and fit_alc indicated that the 95% confidence interval was between 9.55 and 9.69 when only considering the variables of interest and their impact. In relation to the variables of interest and fit3quality, our output suggested that the confidence interval was between 4.97 and 5.14 with 95% confidence. Our output suggests that the prediction interval, as a result, ranges from about 3.8 to 6.29 with 95% confidence when only taking into account variables of interest.
+
+Analysis for nested model (without citric acid and density terms): We see from the anova table that our F-value is 2.2e-16, therefore we reject our null hypothesis. (i.e. there is no significant difference in the features of citric acid and density.)

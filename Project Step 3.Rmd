@@ -1,0 +1,247 @@
+---
+title: "PSTAT126 Group Project Step 3"
+author: "Hanya Ansari, Carina Yuen, Daren Aguilera"
+output:
+  pdf_document: default
+  word_document: default
+  html_document: default
+date: "2023-12-3"
+---
+
+## Introduction:
+
+Wine Quality Based on Physicochemical Tests from UCI Machine Learning Repository <https://www.kaggle.com/datasets/uciml/red-wine-quality-cortez-et-al-2009/code?datasetId=4458&searchQuery=R>
+
+No Missing Attribute Values: 0
+
+Number of Instances: red wine: 1599
+
+Number of Variables: 12 total, 11 continuous, 1 discrete (fixed_acidity, volatile_acidity, citric_acid, residual_sugar, chlorides, free_sulfur_dioxide, total_sulfur_dioxide, density, pH, sulphates, alcohol and 1 integer output variable: quality score between 0 and 10)
+
+## Plots on Explanatory and Response Variables
+
+```{r}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = F,
+                      warning  = F,
+                      fig.width = 4,
+                      fig.height = 3,
+                      fig.align = 'center',
+                      fig.pos = 'H')
+```
+
+```{r}
+
+library(leaps)
+library(tidyverse)
+library(tidymodels)
+library(modelr)
+library(ggplot2)
+library(GGally)
+library(olsrr)
+library(glmnet)
+library(trafo)
+
+#import data
+#data <- read.csv("C:/Users/Carina W Yuen/Downloads/archive/winequality-red.csv")
+data <- read.csv("winequality-red.csv",sep=";")  # read_delim("winequality-red.csv", delim=";")
+
+#initialize variables
+quality_data <- data$quality
+x_f <- data$fixed.acidity
+x_v <- data$volatile.acidity
+x_c <- data$citric.acid
+x_r <- data$residual.sugar
+x_ch <- data$chlorides
+x_fs <- data$free.sulfur.dioxide
+x_ts <- data$total.sulfur.dioxide
+x_d <- data$density
+x_p <- data$pH
+x_s <- data$sulphates
+x_a <- data$alcohol
+```
+
+## ggpairs plot
+```{r echo=F, fig.height=5, fig.width=8, warning=FALSE}
+ggpairs(data, title = 'Ggpairs Plot For Variables of Interest', columns=c('free.sulfur.dioxide', 'total.sulfur.dioxide', 'density', 'alcohol','quality', 'residual.sugar'), columnLabels = c('free.sulfur.dioxide', 'total.sulfur.dioxide', 'density', 'alcohol','quality', 'residual.sugar'))
+
+# for interpretation of ggpairs output https://www.blopig.com/blog/2019/06/a-brief-introduction-to-ggpairs/
+```
+### Interpretation
+
+The upper triangle of the code output represents the 15 correlation coefficients (6 choose 2 number of pairs of wine parameters). The diagonal displays the graph of the distribution.
+
+We noticed that free sulfur dioxide and total sulfur dioxide have a relatively high correlation value of 0.668. This makes sense because the amount of Total Sulfur Dioxide encompasses the Free Sulfur Dioxide, so as we expect that as the Free Sulfur Dioxide increases, so does the total. Another interesting relationship we noticed was that alcohol content and density had a relatively large (in magnitude) correlation value of -0.496. This can be seen visually in the scatter plot of density and alcohol.
+
+There is not any obvious simple transformations that would improve the fit drastically. We did notice that the density and residual sugar scatter plot had a pattern that roughly looked like an exponential, so we will include the natural log transformation and evaluate if it made a difference.
+
+## Interaction Variables
+
+```{r, echo=TRUE}
+# modified model with interaction term between free sulfur dioxide and total sulfur dioxide
+fit2_qual_mod<- lm(quality_data~x_f + poly(x_v, 2, raw = T) + x_c+ x_r + poly(x_ch, 2, raw=T) +
+                     poly(x_fs, 2, raw=T)+ poly(x_ts, 2, raw=T) + x_d + poly(x_p,2,raw=T) +
+                     poly(x_s,2,raw=T) + poly(x_a, 2, raw=T)+ x_fs:x_ts + x_d:x_a)
+# poly second order model 
+
+# modified model with interaction term and third order poly
+fit3_qual_int <- lm(quality_data~x_f+poly(x_v, 3, raw = T) + x_c + x_r +  poly(x_ch, 3, raw=T) +
+                      poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+
+                      poly(x_s,3,raw=T)+poly(x_a, 3, raw=T)+x_fs:x_ts +x_d:x_a)
+```
+
+Our two models shown above both contain interaction terms between free sulfur dioxide and total sulfure dioxide, as well as density and alcohol. The interactions terms above are not necessary to the final fitting of our model, although we see an increase in adjusted $R^2$ for the model which we included these interactions. These aren't neccessary since the final model we chose does not incorporate these interactions, although are retained in the report for their interesting result and possible exploration further on. 
+
+
+## Computational and Statistical Model Choices
+
+For feature engineering, we used backwards elimination on the full model in our project step 2.
+
+```{r}
+# Choose best models from Project step 2
+# STEPWISE REGRESSION WITH BACKWARD ELIMINATION
+
+# poly model order 3
+fit3_quality <- lm(quality_data~x_f+poly(x_v, 3, raw = T) + x_c + x_r + poly(x_ch, 3, raw=T) + poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+ poly(x_s,3,raw=T)+poly(x_a, 3, raw=T))
+```
+
+```{r}
+# poly model order 3 without density
+fit3_drop_d<- lm(quality_data~x_f+poly(x_v, 3, raw = T) + x_c + x_r + poly(x_ch, 3, raw=T) + poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + poly(x_p, 3, raw=T)+ poly(x_s,3,raw=T)+poly(x_a, 3, raw=T))
+
+# comparison of original poly model order 2 and original poly model 3
+anova(fit3_quality, fit3_drop_d)
+
+```
+
+
+### Cross Validation 
+
+Comparing the models for partitioned data (on fixed acidity, alcohol, and volatile acidity) and the original dataset. The error values for the trained dataset are similar to that of the original dataset. For example, for fixed acidity, the trained MSE was 0.3926479 and the original data set's MSE is 0.3805819. This shows by fitting the model we were able to measure predictive accuracy within our dataset.
+
+```{r}
+
+# fitted quality 3 with interactions
+fit3_qual_int <- lm(quality_data~x_f+poly(x_v, 3, raw = T) + x_c + x_r +  poly(x_ch, 3, raw=T) + poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+ poly(x_s,3,raw=T)+poly(x_a, 3, raw=T)+x_fs:x_ts +x_d:x_a)
+
+summary(fit3_qual_int)$adj.r.squared
+
+
+data_partition <- data %>% resample_partition(p=c(train=0.7, test=0.3))
+
+fit_train <- lm(fixed.acidity~ . , data=data_partition$train)
+fit_train2 <- lm(alcohol~ ., data=data_partition$train)
+fit_train3 <- lm(volatile.acidity~ ., data=data_partition$train)
+
+fit_normal <- lm(fixed.acidity~ ., data=data)
+fit_normal2 <- lm(alcohol~ ., data=data)
+fit_normal3 <- lm(volatile.acidity~ ., data)
+
+```
+
+```{r, echo = TRUE}
+mse(model=fit_train, data=data_partition$test)
+mse(model=fit_train2, data=data_partition$test)
+mse(model=fit_train3, data=data_partition$test)
+
+mse(model=fit_normal, data=data_partition$test)
+mse(model=fit_normal2, data=data_partition$test)
+mse(model=fit_normal3, data=data_partition$test)
+
+```
+
+```{r}
+print("BIC")
+```
+
+```{r, echo=TRUE}
+BIC(fit_normal)
+BIC(fit_normal2)
+BIC(fit_normal3)
+
+summary(fit_normal3)
+```
+
+## Model Selection 
+
+We partitioned the data into 70% training and 30% test sets and looked at stepwise regression with backwards elimination and found there was not a huge difference in the model quality, so we decided to use criterion based methods. Each of the criterion based methods balance model complexity and model fit. We choose the BIC method to prioritize selection consistency across our trained model. From this we deduced that the fit_normal3 has the lowest BIC value of -1877.124, so we choose this model to best fit the dataset.
+
+
+
+## Interpretation of Beta Coefficients
+
+Looking at the coefficients of our chosen model fit_normal3, the intercept was about -20.470, fixed acidity: 0.011, citric acid: -0.628, residual sugar: -0.002, chlorides: 0.787, free.sulfur.dioxide: -0.003, total.sulfur.dioxide:0.001, density: 21.046, pH: 0.022, sulphates: -0.148, alcohol: 0.029, quality: -0.044.
+
+The criteria with coefficients with low p values (for alpha=0.05) were fixed.acidity, citric.acid, chlorides, free sulfur dioxide, total sulfur dioxide, density, sulphates, alcohol and quality.
+
+The multiple R-squared value is 0.468 and the adjusted R-squared value is 0.4643. Interpreting this, the multiple R squared value measures the amount of variation in the response variable that can be explained by the predictor variables, and the adjusted R squared represents the values that have been adjusted for the number of predictors in the model. A high R\^2 is not neccessarily a guarantee that the model will accurately describe the population because as the number of predictors increase, the R\^2 value naturally increases, but this may not be indicative of the model improving.
+
+## Analysis of the residuals and influence plots
+
+Comparing the full model and the BIC, we can see the Scale-Location plot improves drastically in regards to the violating the homoscedasticity assumption. There is no clear pattern in the residuals vs fitted plots. The normal QQ plot indicates that the data does follow a relatively normal distribution. However, upon looking at the Scale-Location, it violates the assumption of constant variance as there a distinct trend/shape on the plot.
+
+```{r}
+# full model
+plot(lm(quality_data~
+          x_f+poly(x_v, 3, raw = T) + x_c + x_r +  poly(x_ch, 3, raw=T) + poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+ poly(x_s,3,raw=T)+poly(x_a, 3, raw=T)+x_fs:x_ts +x_d:x_a))
+
+# after using BIC
+plot(fit_normal3 <- lm(volatile.acidity ~ ., data))
+```
+
+
+## Confidence Intervals and Prediction Intervals
+
+```{r}
+
+data_partition <- data %>% resample_partition(p=c(train=0.7, test=0.3))
+
+fit_train <- lm(fixed.acidity~ . , data=data_partition$train)
+fit_train2 <- lm(alcohol~ ., data=data_partition$train)
+fit_train3 <- lm(volatile.acidity~ ., data=data_partition$train)
+
+mse(model=fit_train, data=data_partition$test)
+mse(model=fit_train2, data=data_partition$test)
+mse(model=fit_train3, data=data_partition$test)
+
+summary(fit_normal3)
+# mean values of all measurements
+# print(data)
+
+x_bar<-colMeans(data)
+x_bar_list <-as.list(x_bar)
+x_bar_list <- x_bar_list[1:12]
+# using the second observation in the dataframe, wherevalue
+x_second <- data[2, 1:12]
+```
+
+```{r}
+predict(fit_train3, newdata=x_bar_list, interval='confidence', level=0.95)
+
+
+predict(fit_train3, newdata=x_second, interval='prediction', level=0.95)
+
+```
+
+## Confidence and prediction intervals
+
+With 95% confidence, the mean volatile acidity in the data is estimated to be between 0.5211921 and 0.5363845. Additionally, with 95% confidence, the predicted mean volatile acidity in the data is estimated to be between 0.4439131 and 0.9532625.
+
+## Summary
+
+In conclusion, our working dataset is on red wine and its variables as to how they contribute with each other and its impact on overall quality.  
+
+From the ggpairs output, free sulfur dioxide and total sulfur dioxide had a relatively high correlation value of 0.668, which makes intuitive sense given the total sulfur dioxide value encompasses the free sulfur dioxide value. Alcohol content and density also had a relatively large (in magnitude) correlation value of -0.486.
+
+In this project step, we used stepwise regression with backward elimination. First, we created our starting model fit3_quality, which is a full polynomial model of the quality data with highest order 3. To perform backward elimination, we dropped the density term (one of the few terms that was not raised to poly(3) ). Then we did an analysis comparing the models using anova(fit3_quality, fit_drop_3), and noticed that dropping the term did not change the RSS much, in fact, it increased it from 624.49 to 625.42. We decided to use the BIC method to choose our single best model.
+
+For implementation of interaction variables, our chosen two models contain interaction terms between free sulfur dioxide and total sulfur dioxide, as well as density and alcohol. The interactions terms above are not necessary to the final fitting of our model, although we see an increase in adjusted R2.
+
+The BIC method was applied to the original dataset that was partitioned into 70% training and 30% test sets; Cross validation on fit_normal3 revealed predictive accuracy within our dataset on variables such as fixed acidity, alcohol, and volatile acidity. 
+
+The coefficients of our chosen model fit_normal3 revealed that the variables fixed_acidity, citric.acid, chlorides, free sulfur dioxide, total sulfur dioxide, density, sulfates, alcohol, and quality had low p values (for alpha = 0.05). In addition to this, our analysis also indicated that an increase in predictors and R^2 values was not necessarily indicative of model improvement. 
+
+The Scale-Location plot revealed an improvement in addressing homoscedasticity issues despite the absence of a clear pattern in the residuals vs fitted plots. 
+
+To do our confidence intervals and prediction intervals, we wanted to estimate volatile acidity values as it is a continuous variable. With 95% confidence, the volatile acidity in the data is estimated to be between ~0.52 and 0.54 Additionally, with 95% confidence, the predicted mean volatile acidity value is estimated to be between 0.44 and 0.95.
+

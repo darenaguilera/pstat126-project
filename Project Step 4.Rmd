@@ -1,0 +1,233 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+--- 
+title: "PSTAT126 Group Project Step 4"
+author: "Hanya Ansari, Carina Yuen, Daren Aguilera"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+date: "2023-12-10"
+---
+
+## Introduction:
+
+Wine Quality Based on Physicochemical Tests from UCI Machine Learning Repository <https://www.kaggle.com/datasets/uciml/red-wine-quality-cortez-et-al-2009/code?datasetId=4458&searchQuery=R>
+
+No Missing Attribute Values: 0
+
+Number of Instances: red wine: 1599
+
+Number of Variables: 12 total, 11 continuous, 1 discrete (fixed_acidity, volatile_acidity, citric_acid, residual_sugar, chlorides, free_sulfur_dioxide, total_sulfur_dioxide, density, pH, sulphates, alcohol and 1 integer output variable: quality score between 0 and 10)
+
+```{r}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = F,
+                      warning  = F,
+                      fig.width = 4,
+                      fig.height = 3,
+                      fig.align = 'center',
+                      fig.pos = 'H')
+```
+
+
+```{r}
+library(leaps)
+library(tidyverse)
+library(tidymodels)
+library(modelr)
+library(ggplot2)
+library(GGally)
+library(olsrr)
+library(trafo)
+library(glmnet)  # For ridge and LASSO
+library(caret)   # For cross-validation
+
+
+#import red wine dataset
+data <- read.csv("C:/Users/seren/Downloads/winequality-red.csv",sep=";")  
+
+#initiate variables 
+quality_data <- data$quality
+x_f <- data$fixed.acidity
+x_v <- data$volatile.acidity
+x_c <- data$citric.acid
+x_r <- data$residual.sugar
+x_ch <- data$chlorides
+x_fs <- data$free.sulfur.dioxide
+x_ts <- data$total.sulfur.dioxide
+x_d <- data$density
+x_p <- data$pH
+x_s <- data$sulphates
+x_a <- data$alcohol
+```
+
+From our previous Project Step, our best model was fit_normal3, a linear model that has the response variable as volatile acidity, and the predictors (excluding itself) as the whole model. 
+
+```{r}
+# partition dataset into 70% training and 30% test. This ratio seems to be generally well accepted online for a training and test partition set. 
+data_partition <- data %>% resample_partition(p=c(train=0.7, test=0.3))
+
+# previous model from Project Step 3 
+fit_normal3 <- lm(volatile.acidity~ x_f+x_v+x_c+x_r+x_ch+x_fs+x_ts+x_d+x_p+x_s+x_a, data)
+
+# evaluate Mean Squared Error 
+mse(model=fit_normal3, data=data_partition$test)
+
+
+print("BIC")
+# evaluate Bayesian Information Criteria, method chosen for feature selection in previous step 
+BIC(fit_normal3)
+
+# review coefficients of our dataset
+coefficients(fit_normal3)
+```
+
+
+## Shrinkage Methods: Lasso and Ridge Regression with continuous response variable 
+
+```{r}
+set.seed(123)  # For reproducibility
+
+# setting dimensions of Ridge and LASSO regression 
+x = model.matrix(quality~., data)[,-1]
+y = data$quality
+
+# used here for the code to be partitioned 
+splitIndex <- createDataPartition(y, p = .7, list = FALSE, times = 1)
+
+# Stating the index separator of our data for the models to be trained on
+train_data <- data[splitIndex,]
+
+# training montage 
+x_train <- x[splitIndex,]
+y_train <- train_data[, ncol(train_data)]
+
+# test montage 
+x_test <- x[-splitIndex,]
+y_test <- y[-splitIndex]
+```
+
+
+# Ridge Regression
+
+Ridge regression shrinks the coefficients towards zero. Upon using coefficients (best_model), we got the following estimates: 10.42 for the intercept, 0.987 for alcohol, -0.0025 for free sulfur dioxide, and -0.0043 for total sulfur dioxide. Using cv.glmnet, we found that the optimal lambda is 0.03105, as a dotted vertical line marks the value of Log() that minimizes the MSE value.
+
+```{r}
+# create model of ridge regression using training date
+# make sure alpha is set to 0 for ridge regression 
+cv.ridge <- cv.glmnet(x_train, y_train, alpha = 0)
+# find lambda generally with the most minimal value, decrease the amount of manual bias for our eigenvalues 
+best_lambda_ridge <- cv.ridge$lambda.min
+ridge_model <- glmnet(x_train, y_train, alpha = 0, lambda = best_lambda_ridge)
+
+# Ridge Coefficients
+coef(ridge_model)
+
+plot(cv.ridge)
+abline(v= log(best_lambda_ridge), col='red',lwd=3, lty=2)
+
+# provides us prediction values for the coefficients of our model 
+predict(cv.ridge, type='coefficients', s=best_lambda_ridge)[1:20]
+
+```
+
+# Lasso Regression
+We decided to fit the other predictors to our response variable, volatile acidity. Using Lasso Regression, we obtained the following estimates for the intercept, and coefficients of fixed acidity, and density, respectively from the best model : 10.4230, 0.8485, -1.0751). Fixed acidity and density were highlighted because they were relatively large in magnitude, compared to the mean predictor magnitude (excluding the intercept) is about 0.3245. The optimal lambda (to minimize test MSE) was calculated to be about 0.001139. The small eigenvalue indicates multicollinearity.
+
+Lasso Regression (Least Absolute Shrinkage and Selection Operator): Upon using Lasso Regression, we noted that all the predictors except alcohol are dropped from the model. In the output matrix, the coefficients are “empty” values. Since there is only one “non-zero” coefficient of alcohol (besides the intercept), it indicates the regularization parameter lambda might be causing too much regularization.  Here, we can see the limitations of using certain criteria for determining the calculated best_lambda is 0.03105506. The MSE plot for the Lasso Regression looks similar to that of Ridge Regression, with the vertical dotted line being plotted slightly more to the left at -3.75 instead of -3.5.
+
+```{r}
+# set identical seed to that of previous chunks 
+set.seed(123)
+# set lasso model with same training sets as the
+cv.lasso <- cv.glmnet(x_train, y_train, alpha = 1)
+best_lambda_lasso <- cv.lasso$lambda.min
+
+# Train model
+lasso_model <- glmnet(x_train, y_train, alpha = 1, lambda = best_lambda_lasso)
+
+# LASSO Coefficients
+coef(lasso_model)
+plot(cv.lasso)
+```
+
+```{r}
+# Training the MLR model with our training dataset for quality response  
+mlr_model <- lm(y_train ~ ., data = train_data)
+
+# MLR Coefficients
+summary(mlr_model)$coefficients
+```
+
+
+```{r}
+# Predictions for comparative analysis 
+pred_ridge <- predict(ridge_model, s = best_lambda_ridge, newx = as.matrix(x_test))
+pred_lasso <- predict(lasso_model, s = best_lambda_lasso, newx = as.matrix(x_test))
+pred_mlr <- predict(mlr_model, newdata = data[-splitIndex,])
+
+# Calculate RMSE for comparative analysis between our three regression models 
+rmse_ridge <- sqrt(mean((y_test - pred_ridge)^2))
+rmse_lasso <- sqrt(mean((y_test - pred_lasso)^2))
+rmse_mlr <- sqrt(mean((y_test - pred_mlr)^2))
+```
+
+We can see that comparing the following models by their RMSE we get the following: 
+```{r}
+# Print RMSE
+print(list(rmse_ridge = rmse_ridge,
+           rmse_lasso = rmse_lasso,
+           rmse_mlr = rmse_mlr))
+
+```
+
+```{r}
+# Combine all predictions and observed values into one data frame
+predictions <- data.frame(
+  Observed = y_test,
+  MLR = pred_mlr,
+  RR = as.vector(pred_ridge),
+  LASSO = as.vector(pred_lasso))
+
+# Reshape for ggplot
+predictions_long <- reshape2::melt(predictions, id.vars = "Observed")
+```
+
+The plot below measures the prediction using three regression models. Comparing the points to the dotted line, we see that the LASSO regression method has clustered values of the predicted response at observed response 4-7.
+```{r}
+# Enhance legend and aesthetics
+ggplot(predictions_long, aes(x = Observed, y = value, color = variable, shape = variable)) +
+  geom_point(alpha = 0.5, position = position_jitter(width = 0.1, height = 0)) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  labs(x = "Observed Wine Quality", y = "Predicted Wine Quality", color = "Model", shape = "Model") +
+  ggtitle("Model Predictions vs Observed Wine Quality") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+```
+
+# Weighted Least Squares
+
+Innovation: New Regression Method with Weighted Least Squares Regression (WLS)
+In addition to the Ordinary Least Squares Regression, we looked into the new method, Weighted Least Squares Regression. WLS Regression adjusts for the violation in the assumption because each weight is made inversely proportional to error variance, so our results weigh observations with lower variance heavier. The intuition behind this weight  The WLS Regression coefficients for the variables volatile acidity, free sulfur dioxide, total sulfur dioxide, and alcohol are 1, -8.507*10-20, and 2.815*10-18, respectively.  
+
+We chose this as our new method because it helps when the data violates the homoscedasticity assumption. From our Scale Location plot of the full linear model with the response being volatile acidity, we can see there is a defined pattern in the graph (see page 5). .  While we were able to mostly address this by using BIC to pick our best model, using the WLS method.
+
+```{r}
+#fit3_quality 
+fit_mod <- lm(quality_data~x_f+poly(x_v, 3, raw = T) + x_c + x_r + poly(x_ch, 3, raw=T) + poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+ poly(x_s,3,raw=T)+poly(x_a, 3, raw=T))
+
+
+wt <- 1 / lm(abs(fit_mod$residuals) ~ 
+               fit_mod$fitted.values)$fitted.values^2
+
+wls_mod <- lm(quality_data~x_f+poly(x_v, 3, raw = T) + x_c + x_r + poly(x_ch, 3, raw=T) +
+                poly(x_fs, 3, raw=T) + poly(x_ts, 3, raw=T) + x_d +poly(x_p, 3, raw=T)+
+                poly(x_s,3,raw=T)+poly(x_a, 3, raw=T), data = data, weights = wt)
+summary(wls_mod)
+```
