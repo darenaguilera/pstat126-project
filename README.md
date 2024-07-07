@@ -1,7 +1,5 @@
 ## PSTAT 126: Regression Analysis 
 ### Advanced Statistical Analysis of Red Wine Quality
-- Project measuring response and performing a thorough statistical analysis on red wine quality.
-- Feature engineering various chemical properties, attributes, and quality ratings.
 - Launched a comprehensive data analysis project aimed at exploring the relationship between physicochemical properties of red wine
 and its quality ratings. Involving four major steps, focusing on different aspects of statistical data analysis and model building.
 - Conducted thorough EDA on a dataset of red wine characteristics, involving 1,599 instances and 12 variables. Employed techniques
